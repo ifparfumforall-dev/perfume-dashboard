@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gestión de Perfumes</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#764ba2">
+  <style>
+    body { background: #f9f9f9; }
+    .tab-content { margin-top: 20px; }
+    .qr-canvas { margin: 10px 0; }
+    .card { margin-bottom: 10px; }
+  </style>
+</head>
+<body>
+  <div class="container py-4">
+    <h1 class="text-center mb-4">💎 Gestión de Perfumes</h1>
+
+    <!-- Tabs -->
+    <ul class="nav nav-tabs" id="appTabs">
+      <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#inventario">Inventario</a></li>
+      <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#qr">QR Scanner</a></li>
+      <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#analytics">Analytics</a></li>
+      <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#marketing">Marketing</a></li>
+    </ul>
+
+    <div class="tab-content">
+      <!-- Inventario -->
+      <div class="tab-pane fade show active" id="inventario">
+        <form id="product-form" class="my-3">
+          <input type="text" id="product-name" class="form-control mb-2" placeholder="Nombre" required>
+          <input type="text" id="product-brand" class="form-control mb-2" placeholder="Marca" required>
+          <input type="text" id="product-type" class="form-control mb-2" placeholder="Tipo (Perfume/Decant)" required>
+          <input type="text" id="product-category" class="form-control mb-2" placeholder="Categoría (Dulce/Fresco/Cítrico)" required>
+          <input type="number" id="cost-price" class="form-control mb-2" placeholder="Precio Costo" required>
+          <input type="number" id="selling-price" class="form-control mb-2" placeholder="Precio Venta" required>
+          <input type="number" id="initial-stock" class="form-control mb-2" placeholder="Stock Inicial" required>
+          <textarea id="product-notes" class="form-control mb-2" placeholder="Notas"></textarea>
+          <button class="btn btn-success w-100">Guardar Producto</button>
+        </form>
+
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <h4>📦 Lista de Productos</h4>
+          <button class="btn btn-warning btn-sm" onclick="exportToCSV()">📤 Exportar CSV</button>
+        </div>
+        <div id="product-list"></div>
+      </div>
+
+      <!-- QR -->
+      <div class="tab-pane fade" id="qr">
+        <h4>Escanear QR</h4>
+        <button class="btn btn-primary mb-2" onclick="startScanner()">📷 Iniciar Escáner</button>
+        <div id="qr-reader"></div>
+        <div id="qr-result" class="alert alert-info mt-3" style="display:none;"></div>
+      </div>
+
+      <!-- Analytics -->
+      <div class="tab-pane fade" id="analytics">
+        <h4>📊 Analytics</h4>
+        <div id="categoryChart" style="height:300px;"></div>
+        <div id="profitChart" style="height:300px;"></div>
+        <div id="salesChart" style="height:300px;"></div>
+      </div>
+
+      <!-- Marketing -->
+      <div class="tab-pane fade" id="marketing">
+        <h4>💡 Recomendaciones</h4>
+        <div id="marketing-insights" class="alert alert-warning"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="https://cdn.jsdelivr.net/npm/html5-qrcode"></script>
+  <script src="https://www.gstatic.com/charts/loader.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+
+  <script>
+    let products = JSON.parse(localStorage.getItem("perfumeProducts")) || [];
+    let salesData = JSON.parse(localStorage.getItem("perfumeSales")) || [];
+
+    // Guardar producto
+    document.getElementById("product-form").addEventListener("submit", e => {
+      e.preventDefault();
+      const id = document.getElementById("product-id")?.value || Date.now().toString();
+      const product = {
+        id,
+        name: document.getElementById("product-name").value,
+        brand: document.getElementById("product-brand").value,
+        type: document.getElementById("product-type").value,
+        category: document.getElementById("product-category").value,
+        costPrice: +document.getElementById("cost-price").value,
+        sellingPrice: +document.getElementById("selling-price").value,
+        stock: +document.getElementById("initial-stock").value,
+        notes: document.getElementById("product-notes").value
+      };
+      const index = products.findIndex(p => p.id === id);
+      if (index > -1) products[index] = product; else products.push(product);
+      localStorage.setItem("perfumeProducts", JSON.stringify(products));
+      e.target.reset();
+      if (document.getElementById("product-id")) document.getElementById("product-id").remove();
+      updateProductList();
+      updateAnalytics();
+      updateMarketing();
+    });
+
+    // Mostrar productos
+    function updateProductList() {
+      const list = document.getElementById("product-list");
+      list.innerHTML = "";
+      products.forEach(p => {
+        const div = document.createElement("div");
+        div.className = "card p-2";
+        div.innerHTML = `
+          <strong>${p.name}</strong> (${p.brand}) - ${p.category} - Stock: ${p.stock}  
+          <div>
+            <button class="btn btn-sm btn-primary" onclick="generateQR('${p.id}')">QR</button>
+            <button class="btn btn-sm btn-warning" onclick="editProduct('${p.id}')">✏️</button>
+            <button class="btn btn-sm btn-danger" onclick="deleteProduct('${p.id}')">🗑️</button>
+          </div>
+        `;
+        list.appendChild(div);
+      });
+    }
+
+    function editProduct(id) {
+      const p = products.find(x => x.id === id);
+      if (!p) return;
+      document.getElementById("product-name").value = p.name;
+      document.getElementById("product-brand").value = p.brand;
+      document.getElementById("product-type").value = p.type;
+      document.getElementById("product-category").value = p.category;
+      document.getElementById("cost-price").value = p.costPrice;
+      document.getElementById("selling-price").value = p.sellingPrice;
+      document.getElementById("initial-stock").value = p.stock;
+      document.getElementById("product-notes").value = p.notes;
+
+      if (!document.getElementById("product-id")) {
+        const hidden = document.createElement("input");
+        hidden.type = "hidden"; hidden.id = "product-id"; hidden.value = id;
+        document.getElementById("product-form").appendChild(hidden);
+      } else {
+        document.getElementById("product-id").value = id;
+      }
+    }
+
+    function deleteProduct(id) {
+      if (!confirm("¿Eliminar producto?")) return;
+      products = products.filter(p => p.id !== id);
+      localStorage.setItem("perfumeProducts", JSON.stringify(products));
+      updateProductList();
+      updateAnalytics();
+      updateMarketing();
+    }
+
+    function exportToCSV() {
+      const rows = [["ID","Nombre","Marca","Tipo","Categoría","Costo","Venta","Stock"],
+        ...products.map(p => [p.id, p.name, p.brand, p.type, p.category, p.costPrice, p.sellingPrice, p.stock])];
+      const csv = "data:text/csv;charset=utf-8," + rows.map(r => r.join(",")).join("\n");
+      const link = document.createElement("a");
+      link.href = csv; link.download = "productos.csv"; link.click();
+    }
+
+    function generateQR(id) {
+      const product = products.find(p => p.id === id);
+      if (!product) return;
+      const qrWindow = window.open("", "_blank");
+      qrWindow.document.write(`<h3>${product.name}</h3><canvas id="qrcode"></canvas>`);
+      const qr = new QRCode(qrWindow.document.getElementById("qrcode"), { text: product.id, width: 200, height: 200 });
+    }
+
+    // QR Scanner
+    function startScanner() {
+      const html5QrCode = new Html5Qrcode("qr-reader");
+      html5QrCode.start({ facingMode: "environment" }, { fps: 10, qrbox: 250 }, id => {
+        document.getElementById("qr-result").style.display = "block";
+        document.getElementById("qr-result").innerText = "Producto escaneado: " + id;
+        html5QrCode.stop();
+      });
+    }
+
+    // Google Charts
+    google.charts.load("current", { packages:["corechart"] });
+    google.charts.setOnLoadCallback(updateAnalytics);
+
+    function updateAnalytics() {
+      if (!products.length) return;
+      const data = google.visualization.arrayToDataTable([["Categoría","Cantidad"], ...Object.entries(products.reduce((a,p)=>(a[p.category]=(a[p.category]||0)+1,a),{}))]);
+      new google.visualization.PieChart(document.getElementById("categoryChart")).draw(data);
+
+      const profitData = google.visualization.arrayToDataTable([["Producto","Margen"], ...products.map(p=>[p.name, p.sellingPrice-p.costPrice])]);
+      new google.visualization.ColumnChart(document.getElementById("profitChart")).draw(profitData);
+    }
+
+    function updateMarketing() {
+      let msg = "Sugerencias:\n";
+      products.filter(p=>p.stock<3).forEach(p=>msg+=`⚠️ ${p.name} casi agotado\n`);
+      document.getElementById("marketing-insights").innerText = msg;
+    }
+
+    // Inicializar
+    updateProductList();
+    updateMarketing();
+
+    // Registrar Service Worker
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("service-worker.js").then(()=>console.log("SW ✅"));
+    }
+  </script>
+</body>
+</html>
